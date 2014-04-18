@@ -37,9 +37,9 @@ endif
 UNAME_S := $(shell sh -c 'uname -s')
 UNAME_O := $(shell sh -c 'uname -o 2> /dev/null')
 
-ifeq ($(UNAME_S),Darwin) # Mac OS X/MacPorts stuff
-	PORTS_CFLAGS := -I/opt/local/include
-	PORTS_LDFLAGS := -L/opt/local/lib
+ifeq ($(UNAME_S),Darwin) # Mac OS X MacPorts and Homebrew stuff
+	PORTS_CFLAGS := -I/opt/local/include -I/usr/local/include
+	PORTS_LDFLAGS := -L/opt/local/lib -L/usr/local/lib
 else
   ifneq ($(filter $(UNAME_S),OpenBSD NetBSD DragonFly),)
 	PORTS_CFLAGS := $(shell pkg-config --cflags libusb)

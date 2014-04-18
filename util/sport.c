@@ -158,6 +158,12 @@ int sport_set_modem(sport_t s, int bits)
 	return ioctl(s, TIOCMSET, &bits);
 }
 
+// TODO: implement for other platforms
+int sport_get_modem(sport_t s, int bits)
+{
+	return ioctl(s, TIOCMGET, &bits);
+}
+
 int sport_read(sport_t s, uint8_t *data, int len)
 {
 	int r;

@@ -26,7 +26,8 @@
 #include "ctrlc.h"
 
 /* GoodFET protocol definitions */
-#define APP_JTAG430		0x11
+#define APP_JTAG430		0x16
+#define APP_GLOBAL		0x00
 #define APP_DEBUG		0xFF
 
 #define GLOBAL_READ		0x00
@@ -44,6 +45,8 @@
 #define GLOBAL_NOK		0x7E
 #define GLOBAL_OK		0x7F
 #define GLOBAL_DEBUG		0xFF
+
+const char* GLOBAL_READY_DATA = "http://goodfet.sf.net/";
 
 #define JTAG430_HALTCPU		0xA0
 #define JTAG430_RELEASECPU	0xA1
@@ -80,24 +83,17 @@ struct packet {
 
 static int reset_sequence(sport_t fd)
 {
-	static const int states[] = {
-		SPORT_MC_RTS,
-		SPORT_MC_RTS | SPORT_MC_DTR,
-		SPORT_MC_DTR
-	};
-	int i;
+	int status;
 
 	printc_dbg("Resetting GoodFET...\n");
 
-	for (i = 0; i < 3; i++) {
-		if (sport_set_modem(fd, states[i]) < 0) {
-			printc_err("goodfet: failed at step %d: %s\n",
-				   i, last_error());
-			return -1;
-		}
+	sport_get_modem(fd, status);
 
-		delay_ms(20);
-	}
+	status &= TIOCM_RTS;
+	status &= TIOCM_DTR;
+	sport_set_modem(fd, status);
+	status &= ~TIOCM_DTR;
+	sport_set_modem(fd, status);
 
 	return 0;
 }
@@ -305,12 +301,44 @@ fail:
 	return -1;
 }
 
+static int is_ready_packet(struct packet *pkt)
+{
+	return pkt->app  == APP_GLOBAL &&
+				 pkt->verb == GLOBAL_OK &&
+				 strncmp((char *)pkt->data, GLOBAL_READY_DATA, pkt->len) == 0;
+}
+
+static int seek_ready(sport_t fd)
+{
+	// is it bad practice to allocate a new packet given this function
+	// is called from init_device where a suitable packet is already instantiated?
+	// Taking a packet as an arg would then make sense in that case, but not necessarly
+	// if this function is called from elsewhere.
+	struct packet pkt;
+
+	do {
+		if (recv_packet(fd, &pkt) < 0) {
+			return -1;
+		}
+		delay_ms(20);
+	} while(!is_ready_packet(&pkt));
+
+	return 0;
+}
+
 static int init_device(sport_t fd)
 {
 	struct packet pkt;
 	uint8_t chip_id[2];
 
 	printc_dbg("Initializing...\n");
+
+	if (seek_ready(fd) < 0) {
+		printc_err("goodfet: could not read ready signal from device\n");
+		return -1;
+	}
+
+	printc_dbg("Received GoodFET ready\n");
 
 	if (xfer(fd, APP_JTAG430, GLOBAL_NOK, 0, NULL, &pkt) < 0) {
 		printc_err("goodfet: comms test failed\n");
